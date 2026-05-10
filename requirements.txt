@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+qdrant-client[fastembed]
+google-generativeai
+openai
+rapidfuzz
+sentence-transformers
+pydantic
+python-dotenv
