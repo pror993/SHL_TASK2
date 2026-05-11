@@ -23,7 +23,7 @@ from .validator import init_validator, validate_recommendations
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 CATALOG_PATH = ROOT_DIR / "data" / "catalog.json"
-CHAT_TIMEOUT_SECONDS = 25
+CHAT_TIMEOUT_SECONDS = 35
 
 
 def _configure_logging() -> None:
