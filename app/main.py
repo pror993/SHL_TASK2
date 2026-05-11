@@ -76,6 +76,7 @@ async def lifespan(app: FastAPI):
     client = get_qdrant_client()
     client.get_collections()
     logger.info("startup: qdrant connection ok")
+    app.state.qdrant_client = client
 
     if RERANKER_ENABLED:
         logger.info("startup: preloading reranker")
@@ -114,6 +115,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         nonlocal partial_response
 
         catalog_meta = app.state.catalog_meta
+        client = app.state.qdrant_client
         history_payload = [
             {"role": message.role, "content": message.content}
             for message in messages
@@ -144,7 +146,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         if planner_output.intent == "compare" and planner_output.compare_targets:
             query_results = await asyncio.gather(
                 *[
-                    pipeline_jd(target_name, limit=5)
+                    pipeline_jd(client, target_name, limit=5)
                     for target_name in planner_output.compare_targets
                 ]
             )
@@ -165,16 +167,23 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 if planner_output.raw_test_preference
                 else []
             )
+            matched_languages = (
+                catalog_meta.match_languages(planner_output.raw_language)
+                if planner_output.raw_language
+                else []
+            )
             constraint_results, *query_results = await asyncio.gather(
                 pipeline_constraint(
+                    client,
                     requirement_summary,
                     matched_job_levels,
                     matched_keys,
+                    matched_languages,
                     planner_output.adaptive,
                     limit=20,
                 ),
                 *[
-                    pipeline_jd(subquery, limit=20)
+                    pipeline_jd(client, subquery, limit=20)
                     for subquery in planner_subqueries
                 ],
             )

@@ -76,3 +76,6 @@ class CatalogMeta:
 
     def match_keys(self, value: str) -> List[str]:
         return self._fuzzy_match(value, self.keys)
+
+    def match_languages(self, value: str) -> List[str]:
+        return self._fuzzy_match(value, self.languages)

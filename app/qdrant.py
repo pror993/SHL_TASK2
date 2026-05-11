@@ -31,6 +31,7 @@ def _to_list(values) -> List[float]:
 def _build_filter(
     job_levels: Optional[Iterable[str]],
     keys: Optional[Iterable[str]],
+    languages: Optional[Iterable[str]],
     adaptive: Optional[str],
     base_filter: Optional[models.Filter],
 ) -> Optional[models.Filter]:
@@ -62,6 +63,14 @@ def _build_filter(
             )
         )
 
+    if languages:
+        should.append(
+            models.FieldCondition(
+                key="languages",
+                match=models.MatchAny(any=list(languages)),
+            )
+        )
+
     if not must and not should and not must_not:
         return None
 
@@ -76,12 +85,13 @@ def hybrid_search(
     payload_filter: Optional[models.Filter] = None,
     job_levels: Optional[Iterable[str]] = None,
     keys: Optional[Iterable[str]] = None,
+    languages: Optional[Iterable[str]] = None,
     adaptive: Optional[str] = None,
 ) -> List[dict]:
     logger.info("hybrid_search start limit=%s query_len=%s", limit, len(query or ""))
     dense_vector = next(_DENSE_EMBEDDER.embed([query]))
     sparse_vector = next(_SPARSE_EMBEDDER.embed([query]))
-    qdrant_filter = _build_filter(job_levels, keys, adaptive, payload_filter)
+    qdrant_filter = _build_filter(job_levels, keys, languages, adaptive, payload_filter)
     logger.info("hybrid_search filter=%s", "set" if qdrant_filter else "none")
 
     prefetch = [

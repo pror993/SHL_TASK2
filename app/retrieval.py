@@ -2,10 +2,11 @@ import asyncio
 import logging
 from typing import Iterable, List, Optional, Sequence
 
+from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder
 
 from .config import COLLECTION_NAME, RERANKER_ENABLED
-from .qdrant import get_qdrant_client, hybrid_search
+from .qdrant import hybrid_search
 
 logger = logging.getLogger(__name__)
 
@@ -76,14 +77,15 @@ def _normalize_adaptive(value) -> Optional[str]:
 
 
 def _pipeline_constraint(
+    client: QdrantClient,
     requirement_summary: str,
     seniority: Optional[Iterable[str]],
     test_type: Optional[Iterable[str]],
+    languages: Optional[Iterable[str]],
     adaptive: Optional[str],
     limit: int,
 ) -> List[dict]:
     logger.info("pipeline_constraint start limit=%s", limit)
-    client = get_qdrant_client()
     results = hybrid_search(
         client=client,
         collection_name=COLLECTION_NAME,
@@ -91,15 +93,15 @@ def _pipeline_constraint(
         limit=limit,
         job_levels=seniority,
         keys=test_type,
+        languages=languages,
         adaptive=adaptive,
     )
     logger.info("pipeline_constraint done results=%s", len(results))
     return results
 
 
-def _pipeline_jd(query_text: str, limit: int) -> List[dict]:
+def _pipeline_jd(client: QdrantClient, query_text: str, limit: int) -> List[dict]:
     logger.info("pipeline_jd start limit=%s query_len=%s", limit, len(query_text or ""))
-    client = get_qdrant_client()
     results = hybrid_search(
         client=client,
         collection_name=COLLECTION_NAME,
@@ -111,28 +113,35 @@ def _pipeline_jd(query_text: str, limit: int) -> List[dict]:
 
 
 async def pipeline_constraint(
+    client: QdrantClient,
     requirement_summary: str,
     seniority: Optional[Iterable[str]],
     test_type: Optional[Iterable[str]],
+    languages: Optional[Iterable[str]],
     adaptive: Optional[str],
     limit: int = 20,
 ) -> List[dict]:
     seniority_list = _normalize_list(seniority)
     test_type_list = _normalize_list(test_type)
+    languages_list = _normalize_list(languages)
     adaptive_value = _normalize_adaptive(adaptive)
     return await asyncio.to_thread(
         _pipeline_constraint,
+        client,
         requirement_summary or "",
         seniority_list or None,
         test_type_list or None,
+        languages_list or None,
         adaptive_value,
         limit,
     )
 
 
-async def pipeline_jd(query_text: str, limit: int = 20) -> List[dict]:
+async def pipeline_jd(
+    client: QdrantClient, query_text: str, limit: int = 20
+) -> List[dict]:
     query = (query_text or "").strip()
-    return await asyncio.to_thread(_pipeline_jd, query, limit)
+    return await asyncio.to_thread(_pipeline_jd, client, query, limit)
 
 
 def merge_results(
