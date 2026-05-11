@@ -2,13 +2,13 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from .agent import generate_recommendation
-from .catalog import CatalogMeta
+from .catalog import CatalogMeta, TEST_TYPE_MAP
 from .config import RERANKER_ENABLED
 from .qdrant import get_qdrant_client
 from .planner import plan_request
@@ -36,6 +36,22 @@ def _configure_logging() -> None:
 
 _configure_logging()
 logger = logging.getLogger(__name__)
+
+
+def _normalize_key(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+def _derive_test_type(keys: Optional[List[str]]) -> str:
+    if not keys:
+        return ""
+    codes: List[str] = []
+    for key in keys:
+        normalized = _normalize_key(str(key))
+        code = TEST_TYPE_MAP.get(normalized)
+        if code and code not in codes:
+            codes.append(code)
+    return ",".join(codes)
 
 
 class Message(BaseModel):
@@ -209,7 +225,28 @@ async def chat(request: ChatRequest) -> ChatResponse:
         reply = str(agent_data.get("reply", "")).strip() or fallback_reply
         recommendations = agent_data.get("recommendations", []) or []
 
-        recommendations = validate_recommendations(recommendations, intent)
+        intent_for_validation = intent
+        if planner_output.intent == "recommend" and not recommendations and retrieved_items:
+            fallback_recs = [
+                {
+                    "name": item.get("name"),
+                    "url": item.get("link"),
+                    "test_type": _derive_test_type(item.get("keys", [])),
+                }
+                for item in retrieved_items[:5]
+                if item.get("name") and item.get("link")
+            ]
+            if fallback_recs:
+                if reply.rstrip().endswith("?"):
+                    reply = "Here are the best matches from the catalog based on your request."
+                recommendations = fallback_recs
+                intent_for_validation = "recommend"
+                logger.info(
+                    "chat safeguard applied fallback_recommendations=%s",
+                    len(recommendations),
+                )
+
+        recommendations = validate_recommendations(recommendations, intent_for_validation)
         end_of_conversation = bool(agent_data.get("end_of_conversation", False))
         logger.info(
             "chat response recs=%s end=%s",
